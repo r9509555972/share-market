@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
-import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
+import { CircleCheck as CheckCircle2, Circle as XCircle, Info, X } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { TIPS } from '@/data/content';
 import { tr } from '@/i18n/translations';

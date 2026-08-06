@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Home, GraduationCap, LineChart, Wallet, Star, Settings as SettingsIcon } from 'lucide-react';
+import { Hop as Home, GraduationCap, ChartLine as LineChart, Wallet, Star, Settings as SettingsIcon } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { Languages } from 'lucide-react';
 

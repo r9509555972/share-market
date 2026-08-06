@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wallet, TrendingUp, TrendingDown, History, Inbox } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Factory as History, Inbox } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useAccount } from '@/context/AccountContext';
 import { useQuotes } from '@/hooks/useQuotes';

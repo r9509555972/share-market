@@ -1,7 +1,5 @@
 import { Link } from 'react-router-dom';
-import {
-  GraduationCap, Repeat, LineChart, Target, ArrowRight, CheckCircle2, Trophy, BookOpen,
-} from 'lucide-react';
+import { GraduationCap, Repeat, ChartLine as LineChart, Target, ArrowRight, CircleCheck as CheckCircle2, Trophy, BookOpen } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useProgress } from '@/hooks/useProgress';
 import { MODULES } from '@/data/content';

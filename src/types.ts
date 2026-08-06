@@ -3,30 +3,34 @@
 export type Symbol = string;
 
 export type InstrumentKind = 'stock' | 'index';
+export type MarketCap = 'large' | 'mid' | 'small';
+export type Sector = string;
 
 export interface Instrument {
   symbol: Symbol;
-  name: string;        // English name
-  nameHi: string;      // Hindi name
+  name: string;
+  nameHi: string;
   kind: InstrumentKind;
-  sector?: string;
+  sector?: Sector;
   sectorHi?: string;
+  cap?: MarketCap;
   basePrice: number;
-  volatility: number;  // relative per-tick volatility
+  volatility: number;
   tickIntervalMs: number;
+  fno?: boolean;
 }
 
 export interface Quote {
   symbol: Symbol;
   price: number;
-  prevClose: number;       // previous simulated "day" close
+  prevClose: number;
   open: number;
   dayHigh: number;
   dayLow: number;
   yearHigh: number;
   yearLow: number;
   volume: number;
-  change: number;          // price - prevClose
+  change: number;
   changePercent: number;
   lastTickDir: 'up' | 'down' | 'flat';
   updatedAt: number;
@@ -43,7 +47,7 @@ export interface Candle {
 
 export type OrderSide = 'BUY' | 'SELL';
 export type OrderType = 'MARKET' | 'LIMIT';
-export type ProductType = 'CNC' | 'MIS';   // CNC = delivery, MIS = intraday
+export type ProductType = 'CNC' | 'MIS';
 
 export type OrderStatus = 'EXECUTED' | 'PENDING' | 'CANCELLED' | 'REJECTED';
 
@@ -54,11 +58,11 @@ export interface Order {
   type: OrderType;
   product: ProductType;
   quantity: number;
-  price: number;           // limit price or executed price
+  price: number;
   status: OrderStatus;
   createdAt: number;
   executedAt?: number;
-  note?: string;           // educational tip key
+  note?: string;
 }
 
 export interface Holding {
@@ -68,8 +72,41 @@ export interface Holding {
   product: ProductType;
 }
 
-export interface Position extends Holding {
-  // intraday positions — same shape, separated for clarity
+export interface Position extends Holding {}
+
+// Options types
+export type OptionType = 'CE' | 'PE';
+export type OptionSide = 'BUY' | 'SELL';
+
+export interface OptionContract {
+  symbol: Symbol;
+  strike: number;
+  type: OptionType;
+  lotSize: number;
+  expiry: number;
+  premium: number;
+  prevPremium: number;
+  oi: number;
+  volume: number;
+  iv: number;
+  change: number;
+  updatedAt: number;
+}
+
+export interface OptionPosition {
+  id: string;
+  symbol: Symbol;
+  strike: number;
+  type: OptionType;
+  side: OptionSide;
+  lots: number;
+  lotSize: number;
+  entryPremium: number;
+  currentPremium: number;
+  expiry: number;
+  createdAt: number;
+  squaredOff?: boolean;
+  pnl?: number;
 }
 
 export interface Account {
@@ -79,6 +116,7 @@ export interface Account {
   positions: Position[];
   orders: Order[];
   watchlist: Symbol[];
+  optionPositions: OptionPosition[];
   createdAt: number;
 }
 

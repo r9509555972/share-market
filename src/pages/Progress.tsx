@@ -1,7 +1,5 @@
 import { Link } from 'react-router-dom';
-import {
-  GraduationCap, Trophy, TrendingUp, Wallet, CheckCircle2, ArrowRight, BookOpen,
-} from 'lucide-react';
+import { GraduationCap, Trophy, TrendingUp, Wallet, CircleCheck as CheckCircle2, ArrowRight, BookOpen } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useAccount } from '@/context/AccountContext';
 import { useProgress } from '@/hooks/useProgress';

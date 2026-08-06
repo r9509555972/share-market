@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, XCircle, Trophy, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CircleCheck as CheckCircle2, Circle as XCircle, Trophy, RotateCcw } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useProgress } from '@/hooks/useProgress';
 import { MODULES } from '@/data/content';

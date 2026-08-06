@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Account, Holding, Order, OrderSide, OrderType, ProductType, Symbol } from '@/types';
+import type { Account, Holding, OptionPosition, Order, OrderSide, OrderType, ProductType, Symbol } from '@/types';
 import { priceEngine } from '@/services/priceEngine';
 
-const STARTING_BALANCE = 100000;
+const STARTING_BALANCE = 10000000; // ₹1 Crore
 const ACCOUNT_KEY = 'smg.account.v1';
 const LANG_KEY = 'smg.lang.v1';
 const PROGRESS_KEY = 'smg.progress.v1';
@@ -10,7 +10,20 @@ const PROGRESS_KEY = 'smg.progress.v1';
 function loadAccount(): Account {
   try {
     const raw = localStorage.getItem(ACCOUNT_KEY);
-    if (raw) return JSON.parse(raw) as Account;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Account>;
+      // Migrate old accounts: reset to ₹1 Crore and add optionPositions
+      return {
+        cashBalance: STARTING_BALANCE,
+        startingBalance: STARTING_BALANCE,
+        holdings: parsed.holdings ?? [],
+        positions: parsed.positions ?? [],
+        orders: parsed.orders ?? [],
+        watchlist: parsed.watchlist ?? [],
+        optionPositions: parsed.optionPositions ?? [],
+        createdAt: parsed.createdAt ?? Date.now(),
+      };
+    }
   } catch {}
   return {
     cashBalance: STARTING_BALANCE,
@@ -19,6 +32,7 @@ function loadAccount(): Account {
     positions: [],
     orders: [],
     watchlist: [],
+    optionPositions: [],
     createdAt: Date.now(),
   };
 }
@@ -43,17 +57,31 @@ export interface OrderResult {
   tipKey?: string;
 }
 
+export interface OptionOrderRequest {
+  symbol: Symbol;
+  strike: number;
+  type: 'CE' | 'PE';
+  side: 'BUY' | 'SELL';
+  lots: number;
+  lotSize: number;
+  premium: number;
+  expiry: number;
+}
+
 interface AccountContextValue {
   account: Account;
   placeOrder: (req: OrderRequest) => OrderResult;
   resetAccount: () => void;
   toggleWatch: (symbol: Symbol) => void;
+  placeOptionOrder: (req: OptionOrderRequest) => OrderResult;
+  squareOffOption: (id: string) => void;
   // live portfolio metrics derived from current prices
   invested: number;
   currentValue: number;
   totalPnl: number;
   totalPnlPercent: number;
   totalTrades: number;
+  optionsPnl: number;
 }
 
 const AccountContext = createContext<AccountContextValue | null>(null);
@@ -149,6 +177,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       positions: [],
       orders: [],
       watchlist: [],
+      optionPositions: [],
       createdAt: Date.now(),
     });
   }, []);
@@ -163,8 +192,62 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const placeOptionOrder = useCallback((req: OptionOrderRequest): OrderResult => {
+    const a = accountRef.current;
+    const totalQty = req.lots * req.lotSize;
+    const cost = req.premium * totalQty;
+
+    if (req.side === 'BUY' && cost > a.cashBalance) {
+      return { ok: false, error: 'insufficient_funds' };
+    }
+
+    const pos: OptionPosition = {
+      id: uid(),
+      symbol: req.symbol,
+      strike: req.strike,
+      type: req.type,
+      side: req.side,
+      lots: req.lots,
+      lotSize: req.lotSize,
+      entryPremium: req.premium,
+      currentPremium: req.premium,
+      expiry: req.expiry,
+      createdAt: Date.now(),
+    };
+
+    setAccount(prev => {
+      const newBalance = req.side === 'BUY'
+        ? round2(prev.cashBalance - cost)
+        : round2(prev.cashBalance + cost);
+      return {
+        ...prev,
+        cashBalance: newBalance,
+        optionPositions: [...prev.optionPositions, pos],
+      };
+    });
+
+    return { ok: true };
+  }, []);
+
+  const squareOffOption = useCallback((id: string) => {
+    setAccount(prev => {
+      const pos = prev.optionPositions.find(p => p.id === id);
+      if (!pos || pos.squaredOff) return prev;
+      const totalQty = pos.lots * pos.lotSize;
+      const pnl = (pos.side === 'BUY' ? pos.currentPremium - pos.entryPremium : pos.entryPremium - pos.currentPremium) * totalQty;
+      const updated = prev.optionPositions.map(p =>
+        p.id === id ? { ...p, squaredOff: true, pnl: round2(pnl) } : p
+      );
+      return {
+        ...prev,
+        cashBalance: round2(prev.cashBalance + pnl),
+        optionPositions: updated,
+      };
+    });
+  }, []);
+
   // derive live metrics
-  const { invested, currentValue, totalPnl, totalPnlPercent, totalTrades } = useMemo(() => {
+  const { invested, currentValue, totalPnl, totalPnlPercent, totalTrades, optionsPnl } = useMemo(() => {
     const all = [...account.holdings, ...account.positions].filter(h => h.quantity > 0);
     let inv = 0, cur = 0;
     for (const h of all) {
@@ -174,25 +257,36 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       cur += cp * h.quantity;
     }
     const pnl = cur - inv;
+    // options P&L from open positions
+    let optPnl = 0;
+    for (const p of account.optionPositions) {
+      if (p.squaredOff) { optPnl += p.pnl ?? 0; continue; }
+      const totalQty = p.lots * p.lotSize;
+      optPnl += (p.side === 'BUY' ? p.currentPremium - p.entryPremium : p.entryPremium - p.currentPremium) * totalQty;
+    }
     return {
       invested: inv,
       currentValue: cur,
       totalPnl: pnl,
       totalPnlPercent: inv > 0 ? (pnl / inv) * 100 : 0,
       totalTrades: account.orders.filter(o => o.status === 'EXECUTED').length,
+      optionsPnl: round2(optPnl),
     };
-  }, [account.holdings, account.positions, account.orders]);
+  }, [account.holdings, account.positions, account.orders, account.optionPositions]);
 
   const value: AccountContextValue = {
     account,
     placeOrder,
     resetAccount,
     toggleWatch,
+    placeOptionOrder,
+    squareOffOption,
     invested,
     currentValue,
     totalPnl,
     totalPnlPercent,
     totalTrades,
+    optionsPnl,
   };
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;

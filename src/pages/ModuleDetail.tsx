@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ArrowRight, HelpCircle } from 'lucide-react';
+import { ArrowLeft, CircleCheck as CheckCircle2, ArrowRight, Circle as HelpCircle } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useProgress } from '@/hooks/useProgress';
 import { MODULES } from '@/data/content';

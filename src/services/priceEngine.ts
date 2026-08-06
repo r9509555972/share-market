@@ -1,14 +1,21 @@
 import type { Candle, Instrument, Quote, Symbol } from '@/types';
-import { getInstrument, INSTRUMENTS } from '@/data/instruments';
-
-/**
- * PriceEngine — generates simulated market prices using a random-walk
- * algorithm with per-instrument volatility. NOT real market data.
- * Produces live quotes and historical candle series for charts.
- */
+import { getInstrument, INSTRUMENTS, INDEX_CONSTITUENTS } from '@/data/instruments';
 
 const SEED_HISTORY_DAYS = 90;
-const CANDLES_PER_DAY = 8; // intraday candles per simulated "day"
+const CANDLES_PER_DAY = 8;
+
+export type Timeframe = '1m' | '5m' | '15m' | '1H' | '1D' | '1W';
+
+export const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1H', '1D', '1W'];
+
+const TF_MS: Record<Timeframe, number> = {
+  '1m': 60 * 1000,
+  '5m': 5 * 60 * 1000,
+  '15m': 15 * 60 * 1000,
+  '1H': 60 * 60 * 1000,
+  '1D': 24 * 60 * 60 * 1000,
+  '1W': 7 * 24 * 60 * 60 * 1000,
+};
 
 function mulberry32(seed: number) {
   return function () {
@@ -31,8 +38,8 @@ function hashStr(s: string): number {
 
 interface InternalState {
   quote: Quote;
-  candles: Candle[];          // historical (closed) candles
-  currentCandle: Candle;      // building candle for the current bucket
+  candles: Candle[];
+  currentCandle: Candle;
   rng: () => number;
 }
 
@@ -84,14 +91,13 @@ class PriceEngine {
 
   private generateHistory(inst: Instrument, rng: () => number, now: number): Candle[] {
     const candles: Candle[] = [];
-    let price = inst.basePrice * 0.82; // start ~18% below base for an uptrend
+    let price = inst.basePrice * 0.82;
     const bucketMs = (24 * 60 * 60 * 1000) / CANDLES_PER_DAY;
     const totalBuckets = SEED_HISTORY_DAYS * CANDLES_PER_DAY;
 
     for (let i = totalBuckets; i >= 0; i--) {
       const time = now - i * bucketMs;
       const open = price;
-      // random walk with slight upward drift and mean reversion toward base
       const drift = (inst.basePrice - price) * 0.004;
       const steps = 4;
       let high = open;
@@ -122,7 +128,6 @@ class PriceEngine {
     return Math.round(base);
   }
 
-  /** Advance all prices by one tick (random walk). */
   tick() {
     const now = Date.now();
     for (const [symbol, st] of this.state) {
@@ -184,16 +189,65 @@ class PriceEngine {
     return m;
   }
 
-  /** Historical candles for charts. */
   getCandles(symbol: Symbol, count = 60): Candle[] {
     const st = this.state.get(symbol);
     if (!st) return [];
     return [...st.candles.slice(-count), st.currentCandle];
   }
 
-  /** Detailed intraday-ish candles for the stock detail page. */
   getSeries(symbol: Symbol, count = 80): Candle[] {
     return this.getCandles(symbol, count);
+  }
+
+  /** Aggregate base candles into the requested timeframe. */
+  getCandlesForTimeframe(symbol: Symbol, tf: Timeframe, count = 100): Candle[] {
+    const st = this.state.get(symbol);
+    if (!st) return [];
+
+    const all = [...st.candles, st.currentCandle];
+    if (tf === '1m') return all.slice(-count);
+
+    const tfMs = TF_MS[tf];
+    const aggregated: Candle[] = [];
+    let bucket: Candle | null = null;
+    let bucketStart = 0;
+
+    for (const c of all) {
+      const cBucket = Math.floor(c.time / tfMs) * tfMs;
+      if (!bucket || cBucket !== bucketStart) {
+        if (bucket) aggregated.push(bucket);
+        bucketStart = cBucket;
+        bucket = { ...c, time: cBucket };
+      } else {
+        bucket.high = Math.max(bucket.high, c.high);
+        bucket.low = Math.min(bucket.low, c.low);
+        bucket.close = c.close;
+        bucket.volume += c.volume;
+      }
+    }
+    if (bucket) aggregated.push(bucket);
+    return aggregated.slice(-count);
+  }
+
+  /** Index value derived from constituent stocks' average movement. */
+  getIndexValue(symbol: Symbol): number | undefined {
+    const constituents = INDEX_CONSTITUENTS[symbol];
+    if (!constituents) return undefined;
+    let sum = 0;
+    let n = 0;
+    for (const s of constituents) {
+      const q = this.getQuote(s);
+      if (q) { sum += q.price; n++; }
+    }
+    if (n === 0) return undefined;
+    const avg = sum / n;
+    // Scale to index base price
+    const inst = getInstrument(symbol)!;
+    const ratio = avg / (constituents.reduce((acc, s) => {
+      const ci = getInstrument(s);
+      return acc + (ci ? ci.basePrice : 0);
+    }, 0) / constituents.length);
+    return round2(inst.basePrice * ratio);
   }
 }
 

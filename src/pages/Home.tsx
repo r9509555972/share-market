@@ -1,8 +1,5 @@
 import { Link } from 'react-router-dom';
-import {
-  Zap, Clock, TrendingUp, Activity, Anchor, ArrowRight, BookOpen,
-  LineChart as LineChartIcon, Star, GraduationCap, Wallet, ShieldCheck, Trophy,
-} from 'lucide-react';
+import { Zap, Clock, TrendingUp, Activity, Anchor, ArrowRight, BookOpen, ChartLine as LineChartIcon, Star, GraduationCap, Wallet, ShieldCheck, Trophy } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useAccount } from '@/context/AccountContext';
 import { Disclaimer, DemoBadge } from '@/components/Disclaimer';

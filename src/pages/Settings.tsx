@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RotateCcw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { RotateCcw, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2 } from 'lucide-react';
 import { useLang } from '@/context/LangContext';
 import { useAccount } from '@/context/AccountContext';
 import { useToast } from '@/components/Toast';
