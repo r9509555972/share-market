@@ -85,7 +85,7 @@ export default function StockDetail() {
             ))}
           </div>
         </div>
-        <PriceChart candles={candles} height={320} showVolume={!isIndex} />
+        <PriceChart candles={candles} height={320} showVolume={!isIndex} currentPrice={quote.price} />
       </div>
 
       {/* Stats grid */}

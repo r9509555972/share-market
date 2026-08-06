@@ -1,134 +1,123 @@
-import { useMemo } from 'react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { useEffect, useRef } from 'react';
+import { createChart, CandlestickSeries, ColorType, CrosshairMode, LineStyle, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { Candle } from '@/types';
-import { useLang } from '@/context/LangContext';
 
 interface Props {
   candles: Candle[];
   height?: number;
   showVolume?: boolean;
+  currentPrice?: number;
 }
 
-/** Candlestick-style chart built from recharts composed chart. */
-export function PriceChart({ candles, height = 300, showVolume = true }: Props) {
-  const { t } = useLang();
-  const data = useMemo(() => candles.map(c => ({
-    time: c.time,
-    open: c.open,
-    close: c.close,
-    high: c.high,
-    low: c.low,
-    volume: c.volume,
-    wickTop: c.high,
-    wickBottom: c.low,
-    bodyTop: Math.max(c.open, c.close),
-    bodyBottom: Math.min(c.open, c.close),
-    isUp: c.close >= c.open,
-  })), [candles]);
+export function PriceChart({ candles, height = 300, showVolume = true, currentPrice }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const priceLineRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']> | null>(null);
 
-  const prices = data.map(d => [d.high, d.low]).flat();
-  const yMin = Math.min(...prices) * 0.995;
-  const yMax = Math.max(...prices) * 1.005;
-  const maxVol = Math.max(...data.map(d => d.volume), 1);
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-  return (
-    <div className="w-full" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <XAxis
-            dataKey="time"
-            tickFormatter={ts => new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
-            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
-            stroke="var(--color-border)"
-            minTickGap={40}
-          />
-          <YAxis
-            domain={[yMin, yMax]}
-            tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
-            stroke="var(--color-border)"
-            tickFormatter={v => v.toFixed(0)}
-            orientation="right"
-            width={50}
-          />
-          {showVolume && (
-            <YAxis
-              yAxisId="vol"
-              orientation="left"
-              domain={[0, maxVol * 4]}
-              hide
-            />
-          )}
-          <Tooltip content={<CandleTooltip />} />
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#6b7280',
+        fontSize: 11,
+        fontFamily: 'Inter, sans-serif',
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: 'rgba(42, 49, 61, 0.5)', style: LineStyle.Solid, visible: true },
+      },
+      rightPriceScale: {
+        borderColor: '#2a313d',
+        scaleMargins: { top: 0.08, bottom: showVolume ? 0.22 : 0.08 },
+      },
+      timeScale: {
+        borderColor: '#2a313d',
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 2,
+        barSpacing: 8,
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { visible: false },
+        horzLine: { color: '#3b82f6', labelBackgroundColor: '#3b82f6' },
+      },
+      handleScale: { axisPressedMouseMove: true },
+      handleScroll: { pressedMouseMove: true },
+    });
 
-          {/* Volume bars at bottom */}
-          {showVolume && (
-            <Bar
-              yAxisId="vol"
-              dataKey="volume"
-              barSize={6}
-              isAnimationActive={false}
-              shape={(props: any) => {
-                const { x, y, width, height, payload } = props;
-                const color = payload.isUp ? 'var(--color-up)' : 'var(--color-down)';
-                return <rect x={x} y={y} width={width} height={height} fill={color} opacity={0.35} rx={1} />;
-              }}
-            />
-          )}
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#16c784',
+      downColor: '#ea3943',
+      borderUpColor: '#16c784',
+      borderDownColor: '#ea3943',
+      wickUpColor: '#16c784',
+      wickDownColor: '#ea3943',
+      borderVisible: false,
+    });
 
-          {/* Wick: thin line from low to high */}
-          <Line
-            dataKey="wickTop"
-            stroke="none"
-            dot={false}
-            isAnimationActive={false}
-          />
-          {/* Candle bodies rendered as bars between open & close */}
-          <Bar
-            dataKey="bodyTop"
-            barSize={7}
-            isAnimationActive={false}
-            shape={(props: any) => {
-              const { x, y, width, height, payload } = props;
-              const bodyH = Math.max(Math.abs(payload.close - payload.open), (yMax - yMin) * 0.002);
-              const top = payload.close >= payload.open ? y : y + height - bodyH;
-              const color = payload.isUp ? 'var(--color-up)' : 'var(--color-down)';
-              const cx = x + width / 2;
-              const wickX = cx - width / 14;
-              const wickW = width / 7;
-              return (
-                <g>
-                  {/* wick */}
-                  <rect x={cx + width / 2 - 0.5} y={y - (payload.high - payload.bodyTop) * (height / Math.max(bodyH, 1))} width={1} height={(payload.high - payload.low) * (height / Math.max(bodyH, 1))} fill={color} opacity={0.6} />
-                  <rect x={x} y={top} width={width} height={bodyH} fill={color} rx={1} />
-                  {wickX > x && <rect x={wickX} y={top} width={wickW} height={bodyH} fill={color} rx={1} opacity={0.85} />}
-                </g>
-              );
-            }}
-          />
+    chartRef.current = chart;
+    seriesRef.current = series;
 
-          {candles.length > 0 && (
-            <ReferenceLine y={candles[candles.length - 1].close} stroke="var(--color-accent)" strokeDasharray="3 3" strokeOpacity={0.5} />
-          )}
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
+    const resize = () => {
+      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
+    };
+    window.addEventListener('resize', resize);
 
-function CandleTooltip({ active, payload }: any) {
-  const { t } = useLang();
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-2 text-xs shadow-xl">
-      <div className="mb-1 text-[var(--color-text-muted)]">{new Date(d.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-        <span className="text-[var(--color-text-muted)]">O</span><span className="text-right font-medium">{d.open.toFixed(2)}</span>
-        <span className="text-[var(--color-text-muted)]">H</span><span className="text-right font-medium text-[var(--color-up)]">{d.high.toFixed(2)}</span>
-        <span className="text-[var(--color-text-muted)]">L</span><span className="text-right font-medium text-[var(--color-down)]">{d.low.toFixed(2)}</span>
-        <span className="text-[var(--color-text-muted)]">C</span><span className={`text-right font-medium ${d.isUp ? 'text-[var(--color-up)]' : 'text-[var(--color-down)]'}`}>{d.close.toFixed(2)}</span>
-        {d.volume > 0 && (<><span className="text-[var(--color-text-muted)]">Vol</span><span className="text-right font-medium">{d.volume.toLocaleString('en-IN')}</span></>)}
-      </div>
-    </div>
-  );
+    return () => {
+      window.removeEventListener('resize', resize);
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, [height, showVolume]);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    const data = candles.map(c => ({
+      time: Math.floor(c.time / 1000) as UTCTimestamp,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+    }));
+
+    // Deduplicate by time (lightweight-charts requires unique ascending timestamps)
+    const seen = new Set<number>();
+    const deduped = data.filter(d => {
+      if (seen.has(d.time as number)) return false;
+      seen.add(d.time as number);
+      return true;
+    });
+
+    series.setData(deduped);
+
+    // Current price dashed line
+    if (priceLineRef.current) {
+      series.removePriceLine(priceLineRef.current);
+      priceLineRef.current = null;
+    }
+    const price = currentPrice ?? candles[candles.length - 1]?.close;
+    if (price) {
+      priceLineRef.current = series.createPriceLine({
+        price,
+        color: '#3b82f6',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: '',
+      });
+    }
+
+    chartRef.current?.timeScale().fitContent();
+  }, [candles, currentPrice]);
+
+  return <div ref={containerRef} className="w-full" style={{ height }} />;
 }
